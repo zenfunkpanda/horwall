@@ -1,0 +1,46 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Giampaolo Bozzali zenfunkpanda <giampaolo@zenfunk.it>
+# blocklistd -C control program: whole-source-IP bans for horwall only.
+# Other services retain the standard FreeBSD helper behavior.
+if [ "${2-}" != "horwall" ]; then
+    exec /usr/libexec/blocklistd-helper "$@"
+fi
+
+anchor="horwall/53137"
+table="port53137"
+case "${1-}" in
+add|rem)
+    [ "${6-}" = "53137" ] || exit 1
+    addr="$4"
+    mask="$5"
+    case "$addr" in
+    ::ffff:*.*.*.*)
+        addr=${addr#::ffff:}
+        [ "$mask" != 128 ] || mask=32
+        ;;
+    esac
+    if [ "$1" = add ]; then
+        # A persistent table survives rule replacement and empty periods.
+        if ! /sbin/pfctl -a "$anchor" -sr 2>/dev/null |
+            grep -qx 'block drop in quick from <port53137> to any'; then
+            printf '%s\n' 'table <port53137> persist' \
+                'block drop in quick from <port53137> to any' |
+                /sbin/pfctl -a "$anchor" -f - || exit 1
+        fi
+        /sbin/pfctl -qa "$anchor" -t "$table" -T add "$addr/$mask" || exit 1
+        /sbin/pfctl -qk "$addr" || exit 1
+    else
+        /sbin/pfctl -qa "$anchor" -t "$table" -T delete "$addr/$mask" || exit 1
+    fi
+    echo OK
+    ;;
+flush)
+    /sbin/pfctl -qa "$anchor" -t "$table" -T flush || exit 1
+    echo OK
+    ;;
+*)
+    echo "horwall-pf-helper: unknown action: ${1-}" >&2
+    exit 1
+    ;;
+esac

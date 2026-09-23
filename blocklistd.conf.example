@@ -1,0 +1,15 @@
+# Minimal blocklistd.conf for horwall
+#
+# horwall-blocklist binds a fixed UDP socket on loopback.
+# Fixed port lets us map severity/layers later with separate policies.
+#
+# The helper reports BLOCKLIST_ABUSIVE_BEHAVIOR and blocklistd uses these
+# local rules to accept the notification and create the packet-filter entry.
+# The user column must match horwall_user (www by default).
+
+[local]
+127.0.0.1:53137    dgram   udp     www     horwall     1       5m
+[::1]:53137        dgram   udp6    www     horwall     1       5m
+
+# No remote stanza is strictly required for the first version.
+# If needed later, remote rules can be added to tune masks/durations.
