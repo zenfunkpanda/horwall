@@ -1,0 +1,104 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Giampaolo Bozzali zenfunkpanda <giampaolo@zenfunk.it>
+# PROVIDE: horwall
+# REQUIRE: LOGIN blocklistd
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="horwall"
+rcvar="horwall_enable"
+desc="lightweight awk logfile watcher and blocklistd signaler"
+
+load_rc_config "$name"
+
+: ${horwall_enable:="NO"}
+: ${horwall_user:="www"}
+: ${horwall_logfile:="/var/log/nginx/access.log"}
+: ${horwall_pattern_file:="/usr/local/etc/horwall.patterns"}
+: ${horwall_awk:="/usr/local/libexec/horwall/horwall.awk"}
+# Preserve an explicit empty value for observation-only mode.
+: ${horwall_helper="/usr/local/libexec/horwall/horwall-blocklist"}
+: ${horwall_output:="/var/log/horwall.log"}
+: ${horwall_wrapper:="/usr/local/libexec/horwall/horwalld"}
+: ${pidfile:="/var/run/${name}.pid"}
+: ${procname:="/usr/sbin/daemon"}
+
+required_files="${horwall_awk} ${horwall_pattern_file} ${horwall_wrapper}"
+
+start_cmd="horwall_start"
+stop_cmd="horwall_stop"
+status_cmd="horwall_status"
+restart_cmd="horwall_restart"
+
+horwall_start()
+{
+	if [ -n "$(check_pidfile "$pidfile" "$procname")" ]; then
+		echo "$name is already running" >&2
+		return 1
+	fi
+	if [ ! -r "$horwall_pattern_file" ]; then
+		echo "$name: pattern file not readable: $horwall_pattern_file" >&2
+		return 1
+	fi
+	if [ ! -x "$horwall_awk" ] || [ ! -x "$horwall_wrapper" ]; then
+		echo "$name: filter or wrapper not executable" >&2
+		return 1
+	fi
+	if [ -n "$horwall_helper" ] && [ ! -x "$horwall_helper" ]; then
+		echo "$name: helper not executable: $horwall_helper" >&2
+		return 1
+	fi
+
+	daemon -P "$pidfile" -T "$name" -H -o "$horwall_output" -u "$horwall_user" \
+		"$horwall_wrapper" "$horwall_logfile" "$horwall_pattern_file" "$horwall_helper" "$horwall_awk" || return 1
+	# daemon detaches before the wrapper is fully started.
+	sleep 1
+	horwall_status
+}
+
+horwall_stop()
+{
+	local pid remaining
+
+	pid=$(check_pidfile "$pidfile" "$procname")
+	if [ -z "$pid" ]; then
+		return 0
+	fi
+
+	# daemon forwards TERM to horwalld, which waits for its children.
+	kill -TERM "$pid" >/dev/null 2>&1 || return 1
+	remaining=10
+	while kill -0 "$pid" 2>/dev/null; do
+		if [ "$remaining" -eq 0 ]; then
+			echo "$name: stop timed out; PID file retained, restart aborted" >&2
+			return 1
+		fi
+		sleep 1
+		remaining=$((remaining - 1))
+	done
+	# daemon owns and removes its PID file; never unlink it while running.
+	return 0
+}
+
+horwall_status()
+{
+	local pid
+
+	pid=$(check_pidfile "$pidfile" "$procname")
+	if [ -z "$pid" ]; then
+		echo "$name is not running"
+		return 1
+	fi
+	echo "$name is running as pid $pid"
+	return 0
+}
+
+horwall_restart()
+{
+	horwall_stop || return 1
+	horwall_start
+}
+
+run_rc_command "$1"

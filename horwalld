@@ -1,0 +1,60 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Giampaolo Bozzali zenfunkpanda <giampaolo@zenfunk.it>
+# Lightweight awk logfile watcher and blocklistd signaler.
+# Invoked by rc.d through daemon(8).
+# Arguments: logfile pattern_file blocklist_helper awk_filter
+set -u
+
+if [ "$#" -ne 4 ]; then
+    echo 'usage: horwalld logfile pattern_file blocklist_helper awk_filter' >&2
+    exit 64
+fi
+
+workdir=
+tail_pid=
+awk_pid=
+cleanup()
+{
+    # Never signal ourselves or the whole process group from a signal trap.
+    trap '' INT TERM HUP
+    trap - EXIT
+    for pid in "$tail_pid" "$awk_pid"; do
+        [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null || :
+    done
+    remaining=5
+    while [ "$remaining" -gt 0 ]; do
+        alive=no
+        for pid in "$tail_pid" "$awk_pid"; do
+            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                alive=yes
+            fi
+        done
+        [ "$alive" = yes ] || break
+        sleep 1
+        remaining=$((remaining - 1))
+    done
+    for pid in "$tail_pid" "$awk_pid"; do
+        if [ -n "$pid" ]; then
+            kill -KILL "$pid" 2>/dev/null || :
+            wait "$pid" 2>/dev/null || :
+        fi
+    done
+    [ -z "$workdir" ] || rm -rf "$workdir"
+}
+trap cleanup EXIT
+trap 'exit 0' INT TERM HUP
+
+# A private FIFO lets us track both children directly, without a pipeline shell.
+workdir=$(mktemp -d "${TMPDIR:-/tmp}/horwalld.XXXXXXXX") || exit 1
+mkfifo "$workdir/log" || exit 1
+/usr/bin/tail -F "$1" > "$workdir/log" &
+tail_pid=$!
+/usr/bin/awk -v PATTERN_FILE="$2" -v BLOCKLIST_HELPER="$3" -f "$4" < "$workdir/log" &
+awk_pid=$!
+
+# If tail exits, awk receives EOF. If awk exits, cleanup also stops tail.
+wait "$awk_pid"
+status=$?
+echo "horwalld: filter exited unexpectedly (status $status)" >&2
+exit 1

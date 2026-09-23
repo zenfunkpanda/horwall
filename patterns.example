@@ -1,0 +1,46 @@
+# Horwall example patterns
+# Review before enabling bans: broad rules such as login, graphql, and \.php
+# can match legitimate application routes. Remove or narrow them for your site.
+# One regex per line. Positive rules match only the request path, without query strings.
+#
+# Exclusions: prefix a regex with ! to allow matching request paths.
+# They take precedence over ALL positive rules, regardless of file order.
+# Only the path is checked: query strings are ignored, Referer/User-Agent
+# cannot grant an exclusion. Paths are not URL-decoded or normalized.
+# Use ^ and $ for an exact path, and \. for a literal dot.
+#
+# Example: uncomment to allow /allowed.php (also /allowed.php?x=1).
+# /other/allowed.php and /allowed.php/extra would NOT be exempt.
+# Other PHP paths still match the positive \.php rule below.
+# This prevents notifications for this request; it does not lift existing bans.
+# !^/allowed\.php$
+#
+# A bare ! is invalid. Use [!] to match a literal leading ! in a positive rule.
+# Restart Horwall after changing the installed pattern file.
+#
+# No positive rules specifically for these names (NOT explicit exclusions):
+# robots.txt
+# sitemap.xml
+# favicon.ico
+# logo.png
+# ads.txt
+# /.well-known/
+^/wp-
+\.env
+\.git
+\.php
+wp-json
+wp-admin
+xmlrpc\.php
+graphql
+login
+config
+mcp
+sse
+\.aws/credentials
+phpinfo
+administrator
+admin/controller/extension
+cgi-bin
+xleet
+\.AWS_/credentials
