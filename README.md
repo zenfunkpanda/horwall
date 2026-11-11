@@ -8,7 +8,7 @@ The name comes from **hor**, the Dutch word for *insect screen* (Italian: *zanza
 
 ## Status: alpha
 
-Version: `0.1.1` — see [CHANGELOG.md](CHANGELOG.md).
+Version: `0.1.2` — see [CHANGELOG.md](CHANGELOG.md).
 
 Operational in my FreeBSD setup.
 
@@ -28,7 +28,8 @@ log_format awstats '$host $remote_addr - $remote_user [$time_local] "$request" $
 The filter expects the client IP in the second field and the timestamp in square
 brackets. It matches only well-formed request paths, without query strings;
 malformed requests are ignored. The pipeline is `tail -F` → `awk` → optional
-C helper → `blocklistd`.
+C helper → `blocklistd`. awk starts one long-lived helper
+(`horwall-blocklist -s`) and streams every match to it through a pipe.
 Unlike `tail -f`, `tail -F` reopens the log after a rename or rotation instead of
 remaining attached to the old inode.
 
@@ -36,7 +37,9 @@ remaining attached to the old inode.
 
 - Follows log rotation safely with `tail -F`
 - Supports one regular expression per line in a pattern file
-- Uses `libblocklist` to notify `blocklistd`
+- Uses `libblocklist` to notify `blocklistd` over one persistent connection
+- Reports each address at most once per minute, so scanners cannot flood
+  `blocklistd`
 - Includes an `rc.d` service and sample configuration
 
 ## Requirements
@@ -160,10 +163,8 @@ the PID file and `horwall_output`. Do not grant `www` write access to these file
 `blocklistd` and its PF control helper remain privileged. The notification
 helper needs no elevated privileges: it binds an unprivileged UDP port.
 The helper binds the fixed loopback source port `53137`, which `blocklistd`
-uses to select the Horwall policy. The socket is passed to `blocklistd` and may
-remain open there briefly after the helper exits, so the helper sets
-`SO_REUSEPORT` before binding: the next notification does not fail with
-`EADDRINUSE`, and no lock file is needed.
+uses to select the Horwall policy. It sets `SO_REUSEPORT` so that a manual
+one-shot report can run alongside the service.
 
 The configured user needs read access to the nginx log (including after rotation),
 patterns, and AWK filter, traversal access to their parent directories, execute
@@ -190,7 +191,9 @@ service horwall status
 ```
 
 The `horwalld` wrapper manages `tail` and `awk`, cleaning up both on shutdown
-or unexpected exit. A stop timeout prevents restart from launching a duplicate
+or unexpected exit. The notification helper is a child of `awk`: it exits about
+one second after `awk` closes the pipe, letting `blocklistd` drain pending
+reports. If the helper dies, `awk` stops on its next match and the service exits. A stop timeout prevents restart from launching a duplicate
 instance. There is no automatic restart after an unexpected exit.
 Startup may process the last ten log lines (`tail -F`).
 
@@ -220,6 +223,27 @@ awk -v PATTERN_FILE=patterns.example \
 Output can be redirected to a log file or forwarded to syslog; the installed
 service already captures it in `horwall_output`.
 
+### Notification helper
+
+```sh
+horwall-blocklist [-n] ip [timestamp] [rule]     # one report, then exit
+horwall-blocklist -s [-n] [-w seconds]          # stream mode, used by awk
+```
+
+In stream mode the helper reads `IP<TAB>timestamp<TAB>rule` lines from stdin.
+It keeps one `blocklistd` connection open and reports each address at most once
+per window (`-w`, default 60 seconds; `0` disables it). Keep the window shorter
+than the `blocklistd` ban duration. `-n` is a dry run: reports are printed, not
+sent.
+
+Why a persistent helper: on FreeBSD, when a connected local datagram sender
+closes before `blocklistd` has read its reports, the kernel discards them
+unless the `blocklistd` queue is empty. Version 0.1.0 started one helper per
+match and lost reports during bursts (`EADDRINUSE`); 0.1.1 hid the error but
+still lost them. Stream mode also enlarges the helper's socket send buffer:
+the default (about 40 reports) made libblocklist reconnect and drop its queue
+under load.
+
 ### Pattern exclusions
 
 Positive regexes and lines starting with `!` (exclusions) both match only the
@@ -244,6 +268,8 @@ Run offline regression tests (no blocklist notifications):
 
 ```sh
 sh tests/exclusions.sh
+# awk -> helper stream and deduplication (fake helper and dry run)
+sh tests/stream.sh
 # FreeBSD only: isolated service lifecycle tests, no live configuration/helper
 sh tests/lifecycle.sh
 # As root: also test the default www account, without live notifications

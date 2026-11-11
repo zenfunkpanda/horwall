@@ -4,6 +4,8 @@
 # horwall.awk
 #
 # Simple filter for nginx access.log in awstats format.
+# Matches are printed to stdout; with BLOCKLIST_HELPER set they are also
+# streamed to "BLOCKLIST_HELPER -s" as IP<TAB>timestamp<TAB>rule lines.
 # Reads one regex per line from PATTERN_FILE (!regex excludes request paths).
 # Positive regexes match the request path (without query string). Prints:
 #   IP<TAB>timestamp<TAB>matched_rule
@@ -17,16 +19,20 @@ function shellquote(s,   t) {
     return "'" t "'"
 }
 
-function notify_blocklist(ip, ts, rule,   cmd, rc) {
+# One long-lived helper in stream mode receives every report through a pipe.
+# A helper per report would close its blocklistd connection immediately, and
+# FreeBSD may then discard reports that blocklistd has not read yet.
+# If the helper dies, the next write kills awk with SIGPIPE and horwalld exits.
+function notify_blocklist(ip, ts, rule) {
     if (BLOCKLIST_HELPER == "") {
         return
     }
 
-    cmd = shellquote(BLOCKLIST_HELPER) " " shellquote(ip) " " shellquote(ts) " " shellquote(rule)
-    rc = system(cmd)
-    if (rc != 0) {
-        print "horwall: blocklist helper failed for " ip > "/dev/stderr"
+    if (helper_cmd == "") {
+        helper_cmd = "exec " shellquote(BLOCKLIST_HELPER) " -s"
     }
+    print ip "\t" ts "\t" rule | helper_cmd
+    fflush(helper_cmd)
 }
 
 BEGIN {
@@ -96,6 +102,8 @@ BEGIN {
         for (i = 1; i <= n_patterns; i++) {
             if (path ~ patterns[i]) {
                 print ip "\t" ts "\t" patterns[i]
+                # Keep horwall_output current; awk buffers stdout otherwise.
+                fflush("/dev/stdout")
                 notify_blocklist(ip, ts, patterns[i])
                 break
             }
