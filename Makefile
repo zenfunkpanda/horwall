@@ -1,6 +1,6 @@
 PROG=horwall-blocklist
 SRCS=horwall-blocklist.c
-VERSION?=0.1.0
+VERSION?=0.1.1
 
 PREFIX?=/usr/local
 LIBEXECDIR?=${PREFIX}/libexec/horwall

@@ -24,10 +24,16 @@ static int
 make_local_socket(int family)
 {
     int s;
+    int reuseport = 1;
 
     s = socket(family, SOCK_DGRAM, 0);
     if (s == -1)
         return -1;
+    if (setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &reuseport,
+        sizeof(reuseport)) == -1) {
+        close(s);
+        return -1;
+    }
 
     if (family == AF_INET) {
         struct sockaddr_in sin;
@@ -87,19 +93,16 @@ main(int argc, char **argv)
         errx(64, "usage: %s ip [timestamp] [rule]", argv[0]);
 
     ip = argv[1];
+
     memset(&addr, 0, sizeof(addr));
 
     if (inet_pton(AF_INET, ip, &addr.sin.sin_addr) == 1) {
         addr.sin.sin_family = AF_INET;
-#ifdef HAVE_STRUCT_SOCKADDR_SA_LEN
         addr.sin.sin_len = sizeof(addr.sin);
-#endif
         fd = make_local_socket(AF_INET);
     } else if (inet_pton(AF_INET6, ip, &addr.sin6.sin6_addr) == 1) {
         addr.sin6.sin6_family = AF_INET6;
-#ifdef HAVE_STRUCT_SOCKADDR_SA_LEN
         addr.sin6.sin6_len = sizeof(addr.sin6);
-#endif
         fd = make_local_socket(AF_INET6);
     } else {
         errx(64, "invalid ip address: %s", ip);

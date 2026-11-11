@@ -2,6 +2,8 @@
 #
 # horwall-blocklist binds a fixed UDP socket on loopback.
 # Fixed port lets us map severity/layers later with separate policies.
+# The helper sets SO_REUSEPORT so a new notification can bind the port while
+# blocklistd still holds the socket passed by the previous one.
 #
 # The helper reports BLOCKLIST_ABUSIVE_BEHAVIOR and blocklistd uses these
 # local rules to accept the notification and create the packet-filter entry.

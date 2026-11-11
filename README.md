@@ -8,7 +8,7 @@ The name comes from **hor**, the Dutch word for *insect screen* (Italian: *zanza
 
 ## Status: alpha
 
-Version: `0.1.0`
+Version: `0.1.1` — see [CHANGELOG.md](CHANGELOG.md).
 
 Operational in my FreeBSD setup.
 
@@ -29,6 +29,8 @@ The filter expects the client IP in the second field and the timestamp in square
 brackets. It matches only well-formed request paths, without query strings;
 malformed requests are ignored. The pipeline is `tail -F` → `awk` → optional
 C helper → `blocklistd`.
+Unlike `tail -f`, `tail -F` reopens the log after a rename or rotation instead of
+remaining attached to the old inode.
 
 ## Features
 
@@ -48,6 +50,11 @@ C helper → `blocklistd`.
 
 ```sh
 make
+```
+
+Run installation and the configuration/service commands below as root:
+
+```sh
 make install
 ```
 
@@ -152,6 +159,11 @@ helper run as `www` by default; the `daemon` supervisor remains root and manages
 the PID file and `horwall_output`. Do not grant `www` write access to these files.
 `blocklistd` and its PF control helper remain privileged. The notification
 helper needs no elevated privileges: it binds an unprivileged UDP port.
+The helper binds the fixed loopback source port `53137`, which `blocklistd`
+uses to select the Horwall policy. The socket is passed to `blocklistd` and may
+remain open there briefly after the helper exits, so the helper sets
+`SO_REUSEPORT` before binding: the next notification does not fail with
+`EADDRINUSE`, and no lock file is needed.
 
 The configured user needs read access to the nginx log (including after rotation),
 patterns, and AWK filter, traversal access to their parent directories, execute
