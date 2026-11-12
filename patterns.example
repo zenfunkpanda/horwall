@@ -1,7 +1,14 @@
 # Horwall example patterns
-# Review before enabling bans: broad rules such as login, graphql, and \.php
-# can match legitimate application routes. Remove or narrow them for your site.
+# Review before enabling bans: rules for login pages, MCP/GraphQL endpoints,
+# PHP and config files can match legitimate application routes.
+# Remove or narrow them for your site.
 # One regex per line. Positive rules match only the request path, without query strings.
+#
+# Anchor rules to path segments to avoid matching inside words:
+#   (^|/)name    "name" starts a path segment
+#   (/|$)        end of a segment
+# For example, plain "sse" also matches /assets/ and /tags/dnssec/, and plain
+# "config" matches /tags/ispconfig/: both are legitimate pages.
 #
 # Exclusions: prefix a regex with ! to allow matching request paths.
 # They take precedence over ALL positive rules, regardless of file order.
@@ -11,7 +18,7 @@
 #
 # Example: uncomment to allow /allowed.php (also /allowed.php?x=1).
 # /other/allowed.php and /allowed.php/extra would NOT be exempt.
-# Other PHP paths still match the positive \.php rule below.
+# Other PHP paths still match the positive PHP rule below.
 # This prevents notifications for this request; it does not lift existing bans.
 # !^/allowed\.php$
 #
@@ -23,24 +30,48 @@
 # sitemap.xml
 # favicon.ico
 # logo.png
-# ads.txt
-# /.well-known/
+# /.well-known/   (dotfile rules below list names explicitly to spare it)
+
+# --- Explicit exclusions (always allowed, override every rule below)
+!^/ads\.txt$
+
+# --- WordPress and other CMS probes
 ^/wp-
-\.env
-\.git
-\.php
-wp-json
-wp-admin
-xmlrpc\.php
-graphql
-login
-config
-mcp
-sse
-\.aws/credentials
-phpinfo
-administrator
-admin/controller/extension
-cgi-bin
+(^|/)wp-(admin|content|includes|json|login|config)
+^/(wordpress|wp)(/|$)
+^/administrator(/|$)
+(^|/)admin/controller/extension
+
+# --- Server-side scripts (remove if your site runs PHP, CGI, Java, ASP)
+\.(php[0-9]?|phtml|phar)
+\.(aspx?|jsp|action|do|cgi)(/|$)
+(^|/)cgi-bin(/|$)
+(^|/)phpinfo
 xleet
-\.AWS_/credentials
+
+# --- Dotfiles: VCS, environment, credentials, tool settings
+\.env([._~/-]|$)
+(^|/)\.(git|svn|hg|bzr)(/|$|[a-z_-])
+(^|/)\.(aws|AWS_|ssh|docker|kube|cursor|claude|vscode|idea|composer|cargo|terraform|vault-token|boto|amplifyrc|npmrc|netrc|pgpass|my\.cnf|htpasswd|htaccess|DS_Store|bash_history)
+(^|/)\.\.(/|$)
+
+# --- Config, secrets, state and backup files
+(^|[/._-])config\.(json|xml|ya?ml|js|ts|inc|bak|old)$
+(^|/)kube/config$
+^/((api|v[0-9]|admin)/)?config(/|$)
+(^|[/._-])(credentials|secrets)(\.[a-z]+)?$
+terraform\.tfstate
+(^|/)docker-compose[^/]*\.ya?ml$
+(^|/)environment[^/]*\.ts$
+(^|/)storage/logs/
+(^|/)backup[^/]*\.(zip|tar|gz|tgz|7z|rar|sql)$
+\.(sql|bak|swp)(\.(gz|zip))?$
+
+# --- Admin and API endpoints (remove if your site exposes them)
+^/([a-z_-]+/)?login(\.[a-z]+)?/?$
+^/(api/)?(mcp|sse)(/|$)
+^/(api/)?graphql(/|$)
+(^|/)(actuator|server-status)(/|$)
+
+# --- Aggressive (uncomment only if these paths never exist on your sites)
+# ^/(old|new|bk|bc|backup|bak)/?$

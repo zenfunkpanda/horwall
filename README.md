@@ -62,8 +62,8 @@ make install
 ```
 
 Copy or adapt `blocklistd.conf.example` for the local `blocklistd` configuration.
-**Review the patterns before enabling bans:** broad rules such as `login`,
-`graphql`, and `\.php` can match legitimate requests. Remove or narrow rules
+**Review the patterns before enabling bans:** broad rules such as login pages,
+GraphQL/MCP endpoints, and PHP can match legitimate requests. Remove or narrow rules
 for your site; the example exclusion is commented out.
 
 The default `PREFIX` is `/usr/local`. For a different location, use
@@ -268,6 +268,8 @@ Run offline regression tests (no blocklist notifications):
 
 ```sh
 sh tests/exclusions.sh
+# patterns.example against legitimate and scanner paths
+sh tests/patterns.sh
 # awk -> helper stream and deduplication (fake helper and dry run)
 sh tests/stream.sh
 # FreeBSD only: isolated service lifecycle tests, no live configuration/helper

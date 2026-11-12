@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `patterns.example` rewritten: rules are anchored to path segments and
+  grouped by category. Bare words matched inside legitimate paths:
+  `sse` matched `/assets/` and `/tags/dnssec/`, `config` matched
+  `/tags/ispconfig/`, `login` matched blog slugs. Checked on one week of
+  production logs: false positives went from 60 to 0, and 65 more scanner
+  paths are matched (dotfiles such as `.claude`, `.svn`, `.ssh`, `.pgpass`,
+  Terraform state, SQL dumps and backups, `actuator`, `secrets.yaml`).
+- New offline test `tests/patterns.sh`.
+
 ## 0.1.2
 
 ### Fixed
